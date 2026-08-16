@@ -1,0 +1,34 @@
+name: Feature (spec'd)
+description: Agent-ready feature ticket
+labels: ["arm-b"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One or two sentences. What should exist that doesn't.
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist. Each item observable and testable.
+      placeholder: "- [ ] ..."
+    validations: { required: true }
+  - type: textarea
+    id: files
+    attributes:
+      label: Files likely touched
+    validations: { required: true }
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Must not change
+      description: Interfaces, types, or behaviour this work must leave alone.
+    validations: { required: true }
+  - type: textarea
+    id: test
+    attributes:
+      label: Test that proves it
+      description: Describe the test. Name the file it goes in.
+    validations: { required: true }
