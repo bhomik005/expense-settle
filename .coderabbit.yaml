@@ -1,0 +1,34 @@
+# CodeRabbit configuration
+# https://docs.coderabbit.ai/getting-started/configure-coderabbit
+
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  # Ask CodeRabbit to address Claude at the end of its review so the
+  # ai-discussion workflow (which triggers on CodeRabbit comments that
+  # mention @claude) can start the back-and-forth. CodeRabbit only does
+  # this when it has substantive findings worth a second opinion.
+  review_instructions:
+    - path: "**/*.{ts,tsx}"
+      instructions: >-
+        This project keeps money as integer cents (never floats), keeps pure
+        logic in src/lib free of I/O and React, and requires explicit return
+        types on exported functions. Flag violations of these conventions.
+        If your review raises at least one substantive issue or design
+        question, end your review body with a short line inviting the other
+        AI reviewer to weigh in, addressed to @claude, e.g.
+        "@claude — do you agree with the above, or see it differently?".
+        If you found nothing substantive, do not tag @claude.
+
+chat:
+  auto_reply: true

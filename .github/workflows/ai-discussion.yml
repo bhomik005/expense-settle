@@ -1,0 +1,95 @@
+name: AI Discussion (Claude <-> CodeRabbit)
+
+# Lets Claude respond to CodeRabbit's PR reviews (and vice-versa) so the two
+# reviewers discuss a PR. Loop-guarded by a round marker: every Claude
+# discussion comment embeds "<!-- ai-round:N -->", and this workflow refuses
+# to run once MAX_ROUNDS markers already exist on the PR.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
+
+env:
+  MAX_ROUNDS: 3
+
+jobs:
+  gate:
+    # Only proceed when the triggering author is CodeRabbit. This is what makes
+    # Claude *react to* CodeRabbit. Claude tagging "@coderabbitai" in its reply
+    # is what makes CodeRabbit react back, closing the loop.
+    if: |
+      github.event.sender.login == 'coderabbitai[bot]' &&
+      (
+        (github.event_name == 'issue_comment' && github.event.issue.pull_request != null && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      pr: ${{ steps.check.outputs.pr }}
+      next: ${{ steps.check.outputs.next }}
+    steps:
+      - name: Enforce round cap
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Resolve the PR number across the three event shapes.
+          PR="${{ github.event.issue.number }}"
+          [ -z "$PR" ] && PR="${{ github.event.pull_request.number }}"
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+
+          REPO="${{ github.repository }}"
+          # Count existing round markers across issue comments + review comments.
+          ISSUE_MARKERS=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | contains("<!-- ai-round:"))] | length')
+          REVIEW_MARKERS=$(gh api "repos/$REPO/pulls/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | contains("<!-- ai-round:"))] | length' 2>/dev/null || echo 0)
+          ROUNDS=$((ISSUE_MARKERS + REVIEW_MARKERS))
+          echo "Existing AI discussion rounds on PR #$PR: $ROUNDS (cap ${MAX_ROUNDS})"
+
+          if [ "$ROUNDS" -ge "${MAX_ROUNDS}" ]; then
+            echo "Round cap reached; not responding."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "next=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "next=$((ROUNDS + 1))" >> "$GITHUB_OUTPUT"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  respond:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Claude responds to CodeRabbit
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GH_PAT }}
+          track_progress: true
+          claude_args: >-
+            --max-turns 15
+            --allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api:*),Bash(git:*)"
+            --append-system-prompt "You are participating in a code-review discussion with CodeRabbit, another AI reviewer, on pull request #${{ needs.gate.outputs.pr }}. Read CodeRabbit's latest review/comment and the PR diff. Respond substantively: say where you agree, where you disagree and why (cite specific lines/behavior), and note anything CodeRabbit missed. Be concise and technical. This is discussion round ${{ needs.gate.outputs.next }} of ${{ env.MAX_ROUNDS }}. You MUST end your comment with this exact HTML marker on its own line: <!-- ai-round:${{ needs.gate.outputs.next }} --> . Only tag @coderabbitai at the end if there is a genuine open disagreement worth one more exchange; otherwise do not tag it, to let the discussion conclude."
