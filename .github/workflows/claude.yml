@@ -48,13 +48,10 @@ jobs:
           github_token: ${{ secrets.GH_PAT }}
           additional_permissions: |
             actions: read
-          prompt: |
-            When triggered from an issue, after you have pushed your work to
-            the branch, open a pull request automatically instead of only
-            posting a "Create a PR" link. Run:
-              gh pr create --base main --head "$BRANCH_NAME" \
-                --title "<concise title>" --body "<summary + Closes #<issue-number>>"
-            Use the branch you pushed to as the head. If a PR already exists
-            for that branch, push to it instead of creating a duplicate. Then
-            include the created PR's URL in your issue comment.
-          claude_args: '--allowed-tools "Bash(npm:*),Bash(npx:*),Bash(gh pr *),Bash(git:*)"'
+          # Do NOT set `prompt:` here -- an empty prompt lets the action feed
+          # Claude the issue/PR context so it implements the task. Setting
+          # `prompt:` replaces that task entirely. The auto-open-PR guidance
+          # goes in --append-system-prompt so it augments, not replaces, the task.
+          claude_args: >-
+            --allowed-tools "Bash(npm:*),Bash(npx:*),Bash(gh pr *),Bash(git:*)"
+            --append-system-prompt "When triggered from an issue, after pushing your work to the branch, open a pull request automatically instead of only posting a Create-a-PR link: run 'gh pr create --base main --head <branch> --title <concise title> --body <summary, and Closes #<issue-number>>'. If a PR already exists for that branch, push to it instead of creating a duplicate. Include the created PR URL in your issue comment."
